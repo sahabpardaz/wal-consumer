@@ -22,8 +22,9 @@ approach has several [drawbacks](http://softwarephilosophy.ninja/distributed-tra
 Furthermore, not all kinds of source/sinks are supported for distributed transactions by the
 existing frameworks. So it is common to use eventual consistency methods in many cases. This library
 helps you in this area. These are the assumptions of this library:
-You are going to synchronize or process the changes from a source of a relational table. You are
-using Hibernate or JPA in the relational side. So you have some Entity objects.
+
+- You are going to synchronize or process the changes from a source of a relational table. 
+- You are using Hibernate or JPA in the relational side. So you have some Entity objects.
 
 ![wal-consumer-flow](./img/wal-consumer.png)
 
