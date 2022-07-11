@@ -49,11 +49,13 @@ public class WalConsumer implements Closeable {
     private static final String NUMBER_OF_RECORDS = "_num_wal_records";
     private static final String NUM_SYNCHRONIZED = "_num_synchronized";
     private static final String NUM_IGNORED_ALREADY_DONE = "_num_ignored_already_done";
+    private static final String NOT_EMPTY_SECONDS = "_not_empty_seconds";
 
     // For reporting metrics
     private final MetricRegistry metricRegistry;
     private JmxReporter jmxReporter;
-    private volatile String walState = "";
+    private volatile WalState walState = WalState.NONE;
+    private volatile long walNotEmptyStartedNano = -1L;
 
     private Thread thread;
     private volatile boolean stop = false;
@@ -82,7 +84,15 @@ public class WalConsumer implements Closeable {
                         }
                     }
                 });
-        metricRegistry.register(getMetricName(STATE), ((Gauge<String>) () -> walState));
+        Gauge<Long> walNotEmptySecondsGauge = () -> {
+            if (walNotEmptyStartedNano == -1L) {
+                return 0L;
+            } else {
+                return (System.nanoTime() - walNotEmptyStartedNano) / 1_000_000_000L;
+            }
+        };
+        metricRegistry.register(getMetricName(NOT_EMPTY_SECONDS), walNotEmptySecondsGauge);
+        metricRegistry.register(getMetricName(STATE), ((Gauge<String>) walState::toString));
     }
 
     public WalConsumer(Class<?> walEntityClass, WalEntityConsumerCallback walEntityConsumerCallback,
@@ -118,7 +128,7 @@ public class WalConsumer implements Closeable {
                             headHandle = acquireWalHeadHandle();
                         } catch (IOException e) {
                             logger.warn("Failed to acquire wal head handle. Retrying...", e);
-                            walState = "INACCESSIBLE: IO_FAILURE";
+                            setWalState(WalState.INACCESSIBLE_IO_FAILURE);
                             Thread.sleep(sleepMillisOnIoFailure);
                             continue;
                         }
@@ -130,11 +140,11 @@ public class WalConsumer implements Closeable {
                         }
 
                         if (headHandle == null) {  // It means WAL is empty.
-                            walState = "EMPTY";
+                            setWalState(WalState.EMPTY);
                             Thread.sleep(sleepMillisWhenWalIsEmpty);
                         }
                     } while (headHandle == null);
-                    walState = "NOT_EMPTY";
+                    setWalState(WalState.NOT_EMPTY);
 
                     // Synchronize the entity using the provided callback.
                     WalEntity entity = headHandle.getHead();
@@ -260,6 +270,17 @@ public class WalConsumer implements Closeable {
         }
     }
 
+    private void setWalState(WalState currentWalState) {
+        walState = currentWalState;
+        if (walState == WalState.NOT_EMPTY) {
+            if (walNotEmptyStartedNano == -1L) {
+                walNotEmptyStartedNano = System.nanoTime();
+            }
+        } else {
+            walNotEmptyStartedNano = -1L;
+        }
+    }
+
     private static void safeClose(Session session, Transaction transaction) {
         if (transaction != null && transaction.getStatus().canRollback()) {
             transaction.rollback();
@@ -320,5 +341,12 @@ public class WalConsumer implements Closeable {
         } else {
             return annotation.name();
         }
+    }
+
+    private enum WalState {
+        NONE,
+        EMPTY,
+        NOT_EMPTY,
+        INACCESSIBLE_IO_FAILURE;
     }
 }
