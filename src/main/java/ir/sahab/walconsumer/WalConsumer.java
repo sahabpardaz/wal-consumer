@@ -44,9 +44,11 @@ public class WalConsumer implements Closeable {
     private static int sleepMillisWhenWalIsEmpty = 1000;
     private static int sleepMillisOnIoFailure = 1000;
 
+    private String metricPrefix = "wal";
+
     // Metric names
-    private static final String STATE = "_wal_state";
-    private static final String NUMBER_OF_RECORDS = "_num_wal_records";
+    private static final String STATE = "_state";
+    private static final String NUMBER_OF_RECORDS = "_num_records";
     private static final String NUM_SYNCHRONIZED = "_num_synchronized";
     private static final String NUM_IGNORED_ALREADY_DONE = "_num_ignored_already_done";
     private static final String NOT_EMPTY_SECONDS = "_not_empty_seconds";
@@ -93,6 +95,12 @@ public class WalConsumer implements Closeable {
         };
         metricRegistry.register(getMetricName(NOT_EMPTY_SECONDS), walNotEmptySecondsGauge);
         metricRegistry.register(getMetricName(STATE), ((Gauge<String>) walState::toString));
+    }
+
+    public WalConsumer(Class<?> walEntityClass, WalEntityConsumerCallback walEntityConsumerCallback,
+            SessionFactory sessionFactory, MetricRegistry metricRegistry, String metricPrefix) {
+        this(walEntityClass, walEntityConsumerCallback, sessionFactory, metricRegistry);
+        this.metricPrefix = metricPrefix;
     }
 
     public WalConsumer(Class<?> walEntityClass, WalEntityConsumerCallback walEntityConsumerCallback,
@@ -325,7 +333,7 @@ public class WalConsumer implements Closeable {
     }
 
     private String getMetricName(String metric) {
-        return walTableName + metric;
+        return metricPrefix + metric;
     }
 
     private static String getTableName(Class<?> walEntityClass) {
